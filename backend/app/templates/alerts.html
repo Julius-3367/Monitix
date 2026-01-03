@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alert Management - Monitix</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #e2e8f0; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        .header { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 20px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .header h1 { font-size: 2em; color: #10b981; margin-bottom: 5px; }
+        .back-btn { float: right; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .back-btn:hover { background: #2563eb; }
+        
+        .section { background: #1e293b; padding: 20px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #334155; padding-bottom: 10px; }
+        .section-title { font-size: 1.5em; color: #10b981; }
+        
+        .table { width: 100%; border-collapse: collapse; }
+        .table th { background: #334155; padding: 12px; text-align: left; color: #10b981; font-weight: bold; }
+        .table td { padding: 12px; border-bottom: 1px solid #334155; }
+        .table tr:hover { background: #334155; }
+        
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; text-transform: uppercase; }
+        .badge.enabled { background: #10b981; color: white; }
+        .badge.disabled { background: #64748b; color: white; }
+        
+        .btn { padding: 6px 12px; border: none; border-radius: 5px; cursor: pointer; margin: 0 2px; font-size: 0.9em; }
+        .btn-primary { background: #10b981; color: white; }
+        .btn-primary:hover { background: #059669; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-secondary { background: #3b82f6; color: white; }
+        .btn-secondary:hover { background: #2563eb; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; }
+        .modal.show { display: flex; justify-content: center; align-items: center; }
+        .modal-content { background: #1e293b; padding: 30px; border-radius: 15px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #334155; padding-bottom: 15px; }
+        .modal-title { font-size: 1.5em; color: #10b981; }
+        .close-btn { background: none; border: none; color: #94a3b8; font-size: 1.5em; cursor: pointer; }
+        .close-btn:hover { color: #ef4444; }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px; border: 2px solid #334155; border-radius: 8px; background: #0f172a; color: #e2e8f0; font-size: 1em; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #10b981; }
+        .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 25px; }
+        
+        .empty-state { text-align: center; padding: 40px; color: #64748b; }
+        .empty-state i { font-size: 3em; margin-bottom: 15px; opacity: 0.5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-btn"><i class="fas fa-arrow-left"></i> Dashboard</a>
+            <h1><i class="fas fa-bell"></i> Alert Management</h1>
+            <div style="color: #94a3b8; font-size: 0.9em; clear: both; padding-top: 10px;">Configure alert rules and thresholds</div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title"><i class="fas fa-exclamation-triangle"></i> Alert Rules</h2>
+                <button class="btn btn-primary" onclick="showAddRuleModal()">
+                    <i class="fas fa-plus"></i> Add Alert Rule
+                </button>
+            </div>
+            <div id="rules-container"></div>
+        </div>
+    </div>
+
+    <!-- Add Rule Modal -->
+    <div id="addRuleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title"><i class="fas fa-plus-circle"></i> Add Alert Rule</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="addRuleForm">
+                <div class="form-group">
+                    <label>Rule Name *</label>
+                    <input type="text" id="rule-name" required placeholder="e.g., High CPU Alert">
+                </div>
+                <div class="form-group">
+                    <label>Server</label>
+                    <select id="rule-server">
+                        <option value="">All Servers</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Metric *</label>
+                    <select id="rule-metric" required>
+                        <option value="cpu_usage_percent">CPU Usage %</option>
+                        <option value="memory_percent">Memory Usage %</option>
+                        <option value="disk_percent">Disk Usage %</option>
+                        <option value="cpu_load_1m">CPU Load (1 min)</option>
+                        <option value="cpu_load_5m">CPU Load (5 min)</option>
+                        <option value="cpu_load_15m">CPU Load (15 min)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Condition *</label>
+                    <select id="rule-condition" required>
+                        <option value="greater_than">Greater Than</option>
+                        <option value="less_than">Less Than</option>
+                        <option value="equal_to">Equal To</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Warning Threshold *</label>
+                    <input type="number" id="rule-warning" required placeholder="e.g., 70" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Critical Threshold</label>
+                    <input type="number" id="rule-critical" placeholder="e.g., 90" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Duration (minutes)</label>
+                    <input type="number" id="rule-duration" value="5" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Notification Emails (comma-separated)</label>
+                    <input type="text" id="rule-emails" placeholder="admin@example.com, ops@example.com">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Create Rule</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+        let token = localStorage.getItem('token');
+
+        if (!token) window.location.href = '/login.html';
+
+        async function fetchAPI(endpoint, options = {}) {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            });
+            if (response.status === 401) {
+                localStorage.removeItem('token');
+                window.location.href = '/login.html';
+                return null;
+            }
+            return response.json();
+        }
+
+        async function loadRules() {
+            const rules = await fetchAPI('/alert-rules');
+            const container = document.getElementById('rules-container');
+            
+            if (!rules || rules.length === 0) {
+                container.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><p>No alert rules configured yet</p></div>';
+                return;
+            }
+            
+            container.innerHTML = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Server</th>
+                            <th>Metric</th>
+                            <th>Condition</th>
+                            <th>Warning</th>
+                            <th>Critical</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rules.map(rule => `
+                            <tr>
+                                <td>${rule.name}</td>
+                                <td>${rule.server?.hostname || 'All Servers'}</td>
+                                <td>${rule.metric_name}</td>
+                                <td>${rule.condition}</td>
+                                <td>${rule.threshold_warning}</td>
+                                <td>${rule.threshold_critical || 'N/A'}</td>
+                                <td><span class="badge ${rule.enabled ? 'enabled' : 'disabled'}">${rule.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                                <td>
+                                    <button class="btn btn-secondary" onclick="toggleRule(${rule.id}, ${!rule.enabled})">
+                                        <i class="fas fa-${rule.enabled ? 'pause' : 'play'}"></i>
+                                    </button>
+                                    <button class="btn btn-danger" onclick="deleteRule(${rule.id})">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        async function loadServers() {
+            const servers = await fetchAPI('/servers');
+            const select = document.getElementById('rule-server');
+            if (servers) {
+                select.innerHTML = '<option value="">All Servers</option>' + 
+                    servers.map(s => `<option value="${s.id}">${s.hostname}</option>`).join('');
+            }
+        }
+
+        function showAddRuleModal() {
+            document.getElementById('addRuleModal').classList.add('show');
+            document.getElementById('addRuleForm').reset();
+            loadServers();
+        }
+
+        function closeModal() {
+            document.getElementById('addRuleModal').classList.remove('show');
+        }
+
+        document.getElementById('addRuleForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const emails = document.getElementById('rule-emails').value;
+            const data = {
+                name: document.getElementById('rule-name').value,
+                server_id: document.getElementById('rule-server').value || null,
+                metric_name: document.getElementById('rule-metric').value,
+                condition: document.getElementById('rule-condition').value,
+                threshold_warning: parseFloat(document.getElementById('rule-warning').value),
+                threshold_critical: document.getElementById('rule-critical').value ? parseFloat(document.getElementById('rule-critical').value) : null,
+                duration_minutes: parseInt(document.getElementById('rule-duration').value),
+                notification_emails: emails ? emails.split(',').map(e => e.trim()) : [],
+                enabled: true
+            };
+            
+            const result = await fetchAPI('/alert-rules', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+            
+            if (result) {
+                alert('Alert rule created successfully!');
+                closeModal();
+                loadRules();
+            }
+        });
+
+        async function toggleRule(ruleId, enable) {
+            const result = await fetchAPI(`/alert-rules/${ruleId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ enabled: enable })
+            });
+            if (result) {
+                loadRules();
+            }
+        }
+
+        async function deleteRule(ruleId) {
+            if (!confirm('Are you sure you want to delete this alert rule?')) return;
+            
+            await fetchAPI(`/alert-rules/${ruleId}`, { method: 'DELETE' });
+            loadRules();
+        }
+
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                closeModal();
+            }
+        }
+
+        loadRules();
+    </script>
+</body>
+</html>

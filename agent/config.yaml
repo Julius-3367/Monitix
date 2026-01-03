@@ -1,0 +1,27 @@
+backend:
+  url: "http://localhost:8000"
+  api_key: "bOQLNZ2roOgKr9z_8BU8UydKS089_pcY0QtrXjqIi30"
+  verify_ssl: true
+  timeout: 30
+
+collection:
+  interval_seconds: 300  # 5 minutes
+  
+buffer:
+  enabled: true
+  storage_type: "sqlite"
+  storage_path: "./buffer.db"
+  max_records: 1000
+  batch_size: 50
+
+retry:
+  enabled: true
+  initial_delay: 60
+  max_delay: 600
+  backoff_multiplier: 2
+
+logging:
+  level: "INFO"
+  file: "./agent.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5

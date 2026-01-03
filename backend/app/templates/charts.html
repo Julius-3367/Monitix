@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Charts & Metrics - Monitix</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #e2e8f0; }
+        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+        
+        .header { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 20px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .header h1 { font-size: 2em; color: #10b981; margin-bottom: 5px; }
+        .back-btn { float: right; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .back-btn:hover { background: #2563eb; }
+        
+        .controls { background: #1e293b; padding: 20px; border-radius: 10px; margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .controls select { padding: 10px; background: #0f172a; color: #e2e8f0; border: 2px solid #334155; border-radius: 5px; font-size: 1em; }
+        .controls select:focus { outline: none; border-color: #10b981; }
+        
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(600px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .chart-card { background: #1e293b; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .chart-card h3 { color: #10b981; margin-bottom: 15px; font-size: 1.2em; }
+        .chart-container { position: relative; height: 300px; }
+        
+        .full-width { grid-column: 1 / -1; }
+        .full-width .chart-container { height: 400px; }
+        
+        .loading { text-align: center; padding: 40px; }
+        .spinner { border: 4px solid #334155; border-top: 4px solid #10b981; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-btn"><i class="fas fa-arrow-left"></i> Dashboard</a>
+            <h1><i class="fas fa-chart-line"></i> Metrics & Charts</h1>
+            <div style="color: #94a3b8; font-size: 0.9em; clear: both; padding-top: 10px;">Historical metrics visualization</div>
+        </div>
+
+        <div class="controls">
+            <label style="color: #94a3b8;">Server:</label>
+            <select id="server-select">
+                <option value="">Loading servers...</option>
+            </select>
+            
+            <label style="color: #94a3b8;">Time Range:</label>
+            <select id="time-range">
+                <option value="1">Last Hour</option>
+                <option value="6">Last 6 Hours</option>
+                <option value="24" selected>Last 24 Hours</option>
+                <option value="168">Last 7 Days</option>
+            </select>
+            
+            <button class="back-btn" onclick="loadCharts()" style="float: none;">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card full-width">
+                <h3><i class="fas fa-microchip"></i> CPU Usage Over Time</h3>
+                <div class="chart-container">
+                    <canvas id="cpuChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3><i class="fas fa-memory"></i> Memory Usage</h3>
+                <div class="chart-container">
+                    <canvas id="memoryChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3><i class="fas fa-hdd"></i> Disk Usage</h3>
+                <div class="chart-container">
+                    <canvas id="diskChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3><i class="fas fa-network-wired"></i> Network Traffic</h3>
+                <div class="chart-container">
+                    <canvas id="networkChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3><i class="fas fa-arrows-alt-v"></i> CPU Load Average</h3>
+                <div class="chart-container">
+                    <canvas id="loadChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+        let token = localStorage.getItem('token');
+        let charts = {};
+
+        if (!token) window.location.href = '/login.html';
+
+        async function fetchAPI(endpoint) {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.status === 401) {
+                localStorage.removeItem('token');
+                window.location.href = '/login.html';
+                return null;
+            }
+            return response.json();
+        }
+
+        async function loadServers() {
+            const servers = await fetchAPI('/servers');
+            const select = document.getElementById('server-select');
+            if (servers && servers.length > 0) {
+                select.innerHTML = servers.map(s => 
+                    `<option value="${s.id}">${s.hostname} (${s.ip_address})</option>`
+                ).join('');
+                await loadCharts();
+            }
+        }
+
+        async function loadCharts() {
+            const serverId = document.getElementById('server-select').value;
+            const hours = document.getElementById('time-range').value;
+            
+            if (!serverId) return;
+
+            const data = await fetchAPI(`/servers/${serverId}/metrics/historical?hours=${hours}`);
+            if (!data || data.length === 0) {
+                alert('No metrics data available for this time range');
+                return;
+            }
+
+            const timestamps = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+            
+            // CPU Chart
+            createOrUpdateChart('cpuChart', {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: [{
+                        label: 'CPU Usage %',
+                        data: data.map(d => d.cpu_usage_percent),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: getChartOptions('CPU Usage (%)', 0, 100)
+            });
+
+            // Memory Chart
+            createOrUpdateChart('memoryChart', {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: [{
+                        label: 'Memory %',
+                        data: data.map(d => (d.memory_used / d.memory_total * 100).toFixed(1)),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: getChartOptions('Memory Usage (%)', 0, 100)
+            });
+
+            // Disk Chart
+            const diskData = data.filter(d => d.disk_usage);
+            if (diskData.length > 0) {
+                const diskUsage = diskData.map(d => {
+                    const disk = JSON.parse(d.disk_usage);
+                    const root = disk.find(d => d.mountpoint === '/') || disk[0];
+                    return root ? ((root.used / root.total) * 100).toFixed(1) : 0;
+                });
+                
+                createOrUpdateChart('diskChart', {
+                    type: 'line',
+                    data: {
+                        labels: timestamps.slice(0, diskData.length),
+                        datasets: [{
+                            label: 'Disk Usage %',
+                            data: diskUsage,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: getChartOptions('Disk Usage (%)', 0, 100)
+                });
+            }
+
+            // Network Chart
+            const netData = data.filter(d => d.network_stats);
+            if (netData.length > 0) {
+                createOrUpdateChart('networkChart', {
+                    type: 'line',
+                    data: {
+                        labels: timestamps.slice(0, netData.length),
+                        datasets: [
+                            {
+                                label: 'Bytes Sent (MB)',
+                                data: netData.map(d => {
+                                    const net = JSON.parse(d.network_stats);
+                                    const total = net.reduce((sum, n) => sum + (n.bytes_sent || 0), 0);
+                                    return (total / 1024 / 1024).toFixed(2);
+                                }),
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Bytes Received (MB)',
+                                data: netData.map(d => {
+                                    const net = JSON.parse(d.network_stats);
+                                    const total = net.reduce((sum, n) => sum + (n.bytes_recv || 0), 0);
+                                    return (total / 1024 / 1024).toFixed(2);
+                                }),
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: getChartOptions('Network Traffic (MB)')
+                });
+            }
+
+            // Load Average Chart
+            createOrUpdateChart('loadChart', {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: [
+                        {
+                            label: '1 min',
+                            data: data.map(d => d.cpu_load_1m),
+                            borderColor: '#10b981',
+                            tension: 0.4
+                        },
+                        {
+                            label: '5 min',
+                            data: data.map(d => d.cpu_load_5m),
+                            borderColor: '#3b82f6',
+                            tension: 0.4
+                        },
+                        {
+                            label: '15 min',
+                            data: data.map(d => d.cpu_load_15m),
+                            borderColor: '#f59e0b',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: getChartOptions('Load Average')
+            });
+        }
+
+        function createOrUpdateChart(canvasId, config) {
+            const ctx = document.getElementById(canvasId);
+            if (charts[canvasId]) {
+                charts[canvasId].destroy();
+            }
+            charts[canvasId] = new Chart(ctx, config);
+        }
+
+        function getChartOptions(title, min, max) {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#e2e8f0' }
+                    },
+                    title: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        min: min,
+                        max: max,
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#334155' }
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#334155' }
+                    }
+                }
+            };
+        }
+
+        document.getElementById('server-select').addEventListener('change', loadCharts);
+        document.getElementById('time-range').addEventListener('change', loadCharts);
+
+        loadServers();
+    </script>
+</body>
+</html>
